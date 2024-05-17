@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\PostRequest;
 use App\Models\Post;
+use App\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class PostController extends Controller
 {
@@ -12,127 +16,100 @@ class PostController extends Controller
      */
     public function index()
     {
-      $posts = Post::all();
-    return response()->json([
-        'message' => 'Posts retrieved successfully!',
-        'posts' => $posts,
-        'status' => 200,
-    ], 200);  
+        $user = Auth::user();
+        if ($user) {
+            $posts = Post::where("user_id", $user->id)->paginate(10);
+            return response()->json([
+                'message' => 'Posts retrieved successfully!',
+                'posts' => $posts,
+                'status' => 200,
+            ], 200);
+        } else {
+            return response()->json([
+                'message' => 'User not authenticated!',
+                'status' => 401,
+            ], 401);
+        }
     }
 
     /**
      * Store a newly created resource in storage.
      */
-  public function store(Request $request)
-{
-    try {
-        $validatedData = $request->validate(
-        [
-            'title' => 'required|string|max:10',
-            'body' => 'required|string',
-        ], 
-        [
-            'title.required'=> 'Title is required!',
-            'title.string'=> 'Title must be a string!',
-            'title.max'=> 'Title should not exceed 10 characters!',
-            'body.required'=> 'Body is required!',
-            'body.string'=> 'Body must be a string!',
-        ],
-    );
-        $post = Post::create($validatedData);
-        return response()->json([
-            'message' => 'Post created successfully!',
-            'post' => $post,
-            'status' => 200,
-        ], 200);
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json([
-            'message' => 'Validation failed',
-            'errors' => $e->errors(),
-            'status' => 422,
-        ], 422);
+    public function store(PostRequest $request)
+    {
+        $user = Auth::user();
+        try {
+            $new_post = array(
+                'user_id' => $user->id,
+                'title' => $request->title,
+                'body' => $request->body,
+            );
+            $created_post = Post::create($new_post);
+            return response()->json([
+                'message' => 'Posts created successfully!',
+                'posts' => $created_post,
+                'status' => 200,
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['error' => 'Post not found or does not belong to the authenticated user.'], 404);
+        }
     }
-}
 
     /**
      * Display the specified resource.
      */
-   public function show(string $id)
-{
-    try {
-        $post = Post::findOrFail($id);
-        return response()->json([
-            'message' => 'Post retrieved successfully!',
-            'post' => $post,
-            'status' => 200,
-        ], 200);  // 200 OK status code
-
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        // Return a JSON response if the post is not found
-        return response()->json([
-            'message' => 'Post not found',
-            'status' => 404,
-        ], 404);  // 404 Not Found status code
+    public function show(string $id)
+    {
+        $user = Auth::user();
+        try {
+            $posts = Post::where('user_id', $user->id)->findOrFail($id);
+            return response()->json([
+                'message' => 'Posts retrieved by ID successfully!',
+                'posts' => $posts,
+                'status' => 200,
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['error' => 'Post not found or does not belong to the authenticated user.'], 404);
+        }
     }
-}
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
-{
-    try {
-       $validatedData = $request->validate(
-        [
-            'title' => 'required|string|max:10',
-            'body' => 'required|string',
-        ], 
-        [
-            'title.required'=> 'Title is required!',
-            'title.string'=> 'Title must be a string!',
-            'title.max'=> 'Title should not exceed 10 characters!',
-            'body.required'=> 'Body is required!',
-            'body.string'=> 'Body must be a string!',
-        ],
-    );
-        $post = Post::findOrFail($id);
-        $post->update($validatedData);
-        return response()->json([
-            'message' => 'Post updated successfully!',
-            'post' => $post,
-            'status' => 200,
-        ], 200); 
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json([
-            'message' => 'Validation failed',
-            'errors' => $e->errors(),
-            'status' => 422,
-        ], 422);
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json([
-            'message' => 'Post not found',
-            'status' => 404,
-        ], 404); 
+    public function update(PostRequest $request, string $id)
+    {
+        $user = Auth::user();
+        try {
+            $post = Post::where('user_id', $user->id)->findOrFail($id);
+            $post->title = $request->title;
+            $post->body = $request->body;
+            $post->save();
+            return response()->json([
+                'message' => 'Posts updated successfully!',
+                'posts' => $post,
+                'status' => 200,
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['error' => 'Post not found or does not belong to the authenticated user.'], 404);
+        }
     }
-}
 
     /**
      * Remove the specified resource from storage.
      */
     public function destroy(string $id)
     {
-    try {
-        $post = Post::findOrFail($id);
-        $post = Post::destroy($id);
-        return response()->json([
-            'message' => 'Post deleted successfully!',
-            'status' => 200,
-        ], 200); 
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json([
-            'message' => 'Post not found',
-            'status' => 404,
-        ], 404); 
-    }
+        $user = Auth::user();
+        try {
+            $post = Post::where('user_id', $user->id)->findOrFail($id);
+            $post->destroy($id);
+            return response()->json([
+                'message' => 'Posts deleted successfully!',
+                'posts' => $post,
+                'status' => 200,
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['error' => 'Post not found or does not belong to the authenticated user.'], 404);
+        }
     }
 }
